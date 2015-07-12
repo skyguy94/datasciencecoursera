@@ -1,4 +1,3 @@
-setwd('D:/Projects/datasciencecoursera/ExploratoryDataAnalysis/Project1')
 source('LoadData.R')
 
 png('Plot4.png', width=480, height=480, units="px")
