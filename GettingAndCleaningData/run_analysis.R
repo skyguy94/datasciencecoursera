@@ -28,7 +28,7 @@ raw.test.y <- read.table('UCI HAR Dataset/test/y_test.txt')
 
 data.training <- cbind(raw.train.subject, raw.train.y, raw.train.x)
 data.test <- cbind(raw.test.subject, raw.test.y, raw.test.x)
-set
+
 data <- rbind(data.training, data.test)
 colnames(data) <- c("subject", "activity", features.names)
 
