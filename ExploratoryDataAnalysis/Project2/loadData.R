@@ -4,7 +4,7 @@ if (!file.exists(zipFile)) {
 }
 
 if (!file.exists("summarySCC_PM25.rds") || !file.exists("Source_Classification_Code.rds")) { 
-  unzip(filename)
+  unzip(zipFile)
 }
 
 ## This first line will likely take a few seconds. Be patient!
