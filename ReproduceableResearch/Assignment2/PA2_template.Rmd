@@ -1,0 +1,126 @@
+---
+title: "Examining the negative effects of significant weather events in the US."
+author: "Ritch Melton"
+date: "Sunday, August 16, 2015"
+output:
+  html_document:
+    keep_md: true
+---
+
+## Synopsis
+In this document we seek to gain an understanding of how significant weather events affect the US population in terms of injuries and fatalities. We also examine how the cost of these events is reflected in property damage in US dollars. To do this, we make use of the NWS Climatic Data Center Storm Events database that contains data on significant weather events from 1950 through November 2011. In order to make the analysis meaningful, we focus our attention on the top 10 events by injury/fatality and cost.
+
+
+### Data Processing
+The analysis and plotting of the data was performed with R 3.2 on a Windows 10 desktop. We downloaded the bz2 from the link provided and read it into memory without extracting it. The file is CSV formatted and is delimited with commas and missing values are coded as empty values. We read in the single line header to obtain column names. We renamed the columns to make the headers more meaningful and less archiac. We read in the "StateCode" and "EventType" columns as factors and we specified what we thought was the correct type for all other columns.
+
+```{r, echo=TRUE, cache=TRUE}
+
+if (!file.exists("stormdata.bz2")) {
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "stormdata.bz2", method='auto')
+}
+stormdata  <- read.table("stormdata.bz2",
+                      sep=",",
+                      as.is=TRUE,
+                      na.strings="",
+                      colClasses=c("factor", rep("character", 7), rep("character", 12), "factor", 
+                        rep("numeric", 4), "character", "numeric",  rep("character", 4),
+                        rep("numeric", 4), rep("character", 2)),
+                      header=TRUE,
+                      nrows=902297)
+
+colnames(stormdata) <- c("StateCode",
+                           "BeginDate", "BeginTime", "TimeZone", "BeginCounty", "BeginCountyName", "State", "EventType",
+                           "BeginRange", "BeginAzimuth", "BeginLocation", "EndDate", "EndTime", "EndCounty", "EndCountyName", "EndRange", "EndAzimuth", "EndLocation", "Length", "Width",
+                           "FujitaScale",
+                           "Magnitude", "Fatalities", "Injuries", "PropertyDamage",
+                           "PropertyDamageUnit",
+                           "CropDamage",
+                           "CropDamageUnit", "WeatherForecastingOffice", "StateOffice", "ZoneNames",
+                           "BeginLatitude", "BeginLongitude", "EndLongitude", "EndLatitude",
+                           "Remarks", "ReferenceNumber")  
+```
+
+The dataset contained 902297 observations with 37 variables. Since we were interested in event type, we made an effort to replace the abbreviations and misspellings in the EventType column and storing the processed values in an Events column.
+
+```{r, echo=TRUE, cache=TRUE}
+stormdata$Events <- stormdata$EventType
+  stormdata$Events <- sapply(stormdata$EventType, function(v) {
+    if (is.character(v)) {
+      return (toupper(v))
+    }
+    else return(v)
+  })
+  
+  stormdata$Events <- gsub("TSTM", "THUNDERSTORM", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("THUNERSTORM", "THUNDERSTORM", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("THUNDERSTORMW", "THUNDERSTORM WIND", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("THUNDERSTORMS", "THUNDERSTORM", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("WINDS", "WIND", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("WINS", "WIND", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("WND", "WIND", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("FIRES", "FIRE", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("-", " ", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("/", " ", stormdata$Events, ignore.case=TRUE)
+  stormdata$Events <- gsub("\\.", "", stormdata$Events, ignore.case=TRUE)
+ 
+```
+
+We also modified the PropertyDamage column by multiplying it by its unit if a genuine unit was specified, like 'k' for thousands, 'm' for millions, and 'B' for billions of dollars (US). We stored the results of this computation a the ScaledPropertyDamage column. If the code did not specify a valid unit, we left the PropertyDamage value as its default value and stored it in ScaledPropertyDamage without modification.
+
+```{r, echo=TRUE, cache=TRUE}
+  stormdata$ScaledPropertyDamage <- stormdata$PropertyDamage
+  stormdata <- within(stormdata, ScaledPropertyDamage[PropertyDamageUnit == "K" & !is.na(PropertyDamageUnit)] <- PropertyDamage[PropertyDamageUnit == "K" & !is.na(PropertyDamageUnit)] * 1000)
+  stormdata <- within(stormdata, ScaledPropertyDamage[PropertyDamageUnit == "k" & !is.na(PropertyDamageUnit)] <- PropertyDamage[PropertyDamageUnit == "k" & !is.na(PropertyDamageUnit)] * 1000)
+  stormdata <- within(stormdata, ScaledPropertyDamage[PropertyDamageUnit == "M" & !is.na(PropertyDamageUnit)] <- PropertyDamage[PropertyDamageUnit == "M" & !is.na(PropertyDamageUnit)] * 1000000)
+  stormdata <- within(stormdata, ScaledPropertyDamage[PropertyDamageUnit == "m" & !is.na(PropertyDamageUnit)] <- PropertyDamage[PropertyDamageUnit == "m" & !is.na(PropertyDamageUnit)] * 1000000)
+  stormdata <- within(stormdata, ScaledPropertyDamage[PropertyDamageUnit == "B" & !is.na(PropertyDamageUnit)] <- PropertyDamage[PropertyDamageUnit == "B" & !is.na(PropertyDamageUnit)] * 1000000000)
+```
+
+## Results
+
+The first item we were interested in exploring was determing the the effects of significant weather events on US population health. We aggregated the fatality and injury event data seperately to obtain counts for injuries/fatalities by the event type. We then merged the aggregated data, but kept track of the injury or fatality in the Type column. Using this merged data, we reduced the number of events to the ten with the most combined injuries and fatalities and produced a stacked bar plot from that data as shown below.
+```{r, echo=TRUE}
+library(ggplot2)
+library(scales)
+
+fatalities <- with(stormdata, aggregate(Fatalities, by=list(Events, State), FUN=sum))
+fatalities$Type <- "fatality"
+injuries <- with(stormdata, aggregate(Injuries, by=list(Events, State), FUN=sum))
+injuries$Type <- "injury"
+
+colnames(fatalities) <- c("Event", "State", "Count", "Type")
+colnames(injuries) <- c("Event", "State", "Count", "Type")
+merged <- rbind(fatalities, injuries)
+
+byEvent <- with(merged, aggregate(Count, by=list(Event, Type), FUN=sum))
+colnames(byEvent) <- c("Event", "Type", "Count")
+byEvent <- head(byEvent[order(-byEvent$Count),], 10)
+
+g <- ggplot(byEvent, aes(x=factor(Event), y=Count, fill=Type)) +
+    geom_bar(stat="identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab("Event") +
+    ylab("Total Number of Events") +
+    ggtitle('Top ten weather events by combined injuries and fatalities.')
+print(g)
+```
+
+It appears that most events cause injuries and not fatalities, but tornados cause the most injuries and fatalites combined. We weren't certain if heat injuries caused by heat were different than those caused by excessive heat so we left those factors seperated. 
+
+We used a similar technique to show the top ten events in terms of property damage as measured in US Dollars (USD).
+```{r, echo=TRUE}
+byCost <- with(stormdata, aggregate(ScaledPropertyDamage, by=list(Events, State), FUN=sum))
+colnames(byCost) <- c("Event", "State", "Cost")
+byCost <- head(byCost[order(-byCost$Cost),], 10)
+
+g <- ggplot(byCost, aes(x=factor(Event), y=Cost)) +
+  geom_bar(fill="lightblue", stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("Cost") +
+  ylab("Total Cost") +
+  ggtitle('Top ten weather events by property damage.')
+print(g)
+```
+
+Floods seem to cause the most property damage, but tornados caused relatively little property damage. Given the the amount of injuries and fatalities that tornados cause, this result is a bit surprising. We also weren't sure if a flood was different from a river flood, so we left those factors seperate.
